@@ -2,6 +2,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 
 namespace Server
 {
@@ -19,6 +20,7 @@ namespace Server
             Bind();
             Listen();
             Accept();
+            Receive();
             Clean();
             
         }
@@ -54,9 +56,18 @@ namespace Server
             handler = socket.Accept();
             Console.WriteLine("Conected");
         }
+        void Receive()
+        {
+            string data = null;
+            byte[] buffer;
+            buffer = new byte[1024];
+            int bytesRec = handler.Receive(buffer);
+            data = Encoding.ASCII.GetString(buffer, 0, bytesRec);
+            Computer computer = JsonSerializer.Deserialize<Computer>(data);
+        }
         void Clean()
         {
-            socket.Shutdown(SocketShutdown.Receive);
+            
             socket.Close();
             handler.Shutdown(SocketShutdown.Receive);
             handler.Close();
