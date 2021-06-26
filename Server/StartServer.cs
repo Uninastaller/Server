@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -11,7 +12,7 @@ namespace Server
 {
     class StartServer
     {
-        private static Socket socket, handler;
+        private static Socket ServerSocket, handler;
         private static IPHostEntry host;
         private static IPAddress ipAddress;
         private static IPEndPoint localEndPoint;
@@ -19,6 +20,8 @@ namespace Server
 
         private static Hashtable socketHolder = new Hashtable();
         private static Hashtable threadHolder = new Hashtable();
+
+        private static List<Socket> clientSockets = new List<Socket>();
 
         private static Thread thread;
         private static Thread identification;
@@ -41,18 +44,12 @@ namespace Server
             Set();
             Create();
             Bind();
-            Listen();
-            /*
-            thread = new Thread(new ThreadStart(WaitingForClient));
-            threadHolder.Add(connectId, thread);
-            thread.Start();
-            */
-            WaitingForClient();
+            _Listen();
+            Console.ReadLine();
         }
 
         void Set()
         {
-            semaphore = new Semaphore(1, 1);
 
             host = Dns.GetHostEntry("127.0.0.1");
             ipAddress = host.AddressList[0];
@@ -60,37 +57,48 @@ namespace Server
         }
         void Create()
         {
-            socket = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            ServerSocket = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
             Console.WriteLine("Socket created");
         }
         void Bind()
         {
-            socket.Bind(localEndPoint);
+            ServerSocket.Bind(localEndPoint);
             Console.WriteLine("Socket bound");
         }
-        void Listen()
+        void _Listen()
         {
-            socket.Listen(10);
+            ServerSocket.Listen(10);
+            ServerSocket.BeginAccept(new AsyncCallback(_AcceptCallback), null);
             Console.WriteLine("Socket listening");
         }
-        void Accept()
+        private static void _AcceptCallback(IAsyncResult AR)
         {
-            Console.WriteLine("Waiting for connection THREAD[{0}]",Thread.CurrentThread.ManagedThreadId);
-            handler = socket.Accept();           
-        }
-        void ReceiveJson(Socket s)
-        {              
+            Socket socket = ServerSocket.EndAccept(AR);
+            clientSockets.Add(socket);
             buffer = new byte[1024];
+            socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, new AsyncCallback(_ReceiveCallback), socket);
+            ServerSocket.BeginAccept(new AsyncCallback(_AcceptCallback), null);
 
-            amountOfBytes = s.Send(Encoding.ASCII.GetBytes("Send_Json", 0, 9));
+        }
+        private static void _ReceiveCallback(IAsyncResult AR)
+        {
+            Socket socket = (Socket)AR.AsyncState;
+            amountOfBytes = socket.EndReceive(AR);
+            msg = new byte[amountOfBytes];
+            Array.Copy(buffer,msg,amountOfBytes);
+            data = Encoding.ASCII.GetString(msg);
+            Console.WriteLine("[Client] " + data);
+            if (JsonValidation(data))
+            {
+                Console.WriteLine("[SERVER] Valid json of Computer object was sent.");
+            }
+            if (data.ToLower() == "request json")
+            {
+                SendJson(socket);
+                Console.WriteLine("[SERVER] Sending Json.");
+            }
+            else Send("Invalid request", socket);
 
-            amountOfBytes = s.Receive(buffer);
-            data = Encoding.ASCII.GetString(buffer, 0, amountOfBytes);
-            computer = JsonSerializer.Deserialize<Computer>(data);
-            Console.WriteLine("Json received THREAD[{0}]", Thread.CurrentThread.ManagedThreadId);
-
-            Console.WriteLine(computer.name);
-            //CloseTheThread(connectId);
         }
         void CleanSocket(long realId)
         {
@@ -100,65 +108,38 @@ namespace Server
             sct.Close();
 
         }
-        void WaitingForClient()
-        {
-            while (true)
-            {
-                Accept();
-                semaphore.WaitOne();
-                if (connectId < 10000)
-                    Interlocked.Increment(ref connectId);
-                else
-                    connectId = 1;
-                
-                if (socketHolder.Count < 10)
-                {
-                    while (socketHolder.Contains(connectId))
-                    {
-                        Interlocked.Increment(ref connectId);
-                    }
-                    socketHolder.Add(connectId, handler);
-                    identification = new Thread(new ThreadStart(ClientIdentify));
-                    threadHolder.Add(connectId, identification);
-                    semaphore.Release();
-                    identification.Start();             
-                }
-            }
-        }
 
-        private void CloseTheThread(long realId)
+        static void SendJson(Socket socket)
         {
-            CleanSocket(realId);
-            socketHolder.Remove(realId);         
-            threadHolder.Remove(realId);
-        }
-        void ClientIdentify()
-        {
-            long realId = connectId;
-            buffer = new byte[30];
-            Socket s = ((Socket)socketHolder[realId]);
-            amountOfBytes = s.Receive(buffer);
-            identificator = BitConverter.ToInt32(buffer,0);
-
-            Console.WriteLine("Client {0}: Connected! THREAD[{1}]", identificator, Thread.CurrentThread.ManagedThreadId);
-            if (identificator == 1)
+            if (computer != null)
             {
-                semaphore.WaitOne();
-                ReceiveJson(s);
-                semaphore.Release();
+                string stringjson = JsonSerializer.Serialize(computer);
+                Send(stringjson, socket);
             }
-            if (identificator == 2)
-            {
-                semaphore.WaitOne();
-                SendJson(s);                
-            }
+            else Console.WriteLine("I dont have any Json yet.");
         }
-        void SendJson(Socket s)
+        static void Send(String data, Socket socket)
         {
-            
-            string stringjson = JsonSerializer.Serialize(computer);
-            msg = Encoding.ASCII.GetBytes(stringjson);
-            amountOfBytes = s.Send(msg);
+            msg = Encoding.ASCII.GetBytes(data);
+            socket.BeginSend(msg, 0, msg.Length, SocketFlags.None, new AsyncCallback(SendCallBack), socket);
+            socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, new AsyncCallback(_ReceiveCallback), socket);
+        }
+        static void SendCallBack(IAsyncResult AR)
+        {
+            Socket socket = (Socket)AR.AsyncState;
+            socket.EndSend(AR);
+        }
+        static bool JsonValidation(String data) 
+        {
+            try
+            {
+                computer = JsonSerializer.Deserialize<Computer>(data);
+            }
+            catch(System.Text.Json.JsonException)
+            {
+                return false;
+            }
+            return true;
         }
     }
 }
