@@ -14,7 +14,7 @@ namespace Server
         private IPHostEntry host;
         private IPAddress ipAddress;
         private IPEndPoint localEndPoint;
-        private long connectId;
+        private long connectId = 0;
 
         Hashtable socketHolder = new Hashtable();
         Hashtable threadHolder = new Hashtable();
@@ -32,9 +32,7 @@ namespace Server
             Listen();
             thread = new Thread(new ThreadStart(WaitingForClient));
             threadHolder.Add(connectId, thread);
-            thread.Start();
-            //Clean();
-            
+            thread.Start();            
         }
 
         void Set()
@@ -78,12 +76,13 @@ namespace Server
             Console.WriteLine(computer.name);
             CloseTheThread(connectId);
         }
-        void Clean()
+        void CleanSocket(long realId)
         {
             
-            socket.Close();
-            handler.Shutdown(SocketShutdown.Receive);
-            handler.Close();
+            Socket sct = (Socket)socketHolder[realId];
+            sct.Shutdown(SocketShutdown.Both);
+            sct.Close();
+
         }
         void WaitingForClient()
         {
@@ -91,7 +90,7 @@ namespace Server
             {
                 Accept();
 
-                if (connectId < 1000)
+                if (connectId < 10000)
                     Interlocked.Increment(ref connectId);
                 else
                     connectId = 1;
@@ -112,8 +111,7 @@ namespace Server
 
         private void CloseTheThread(long realId)
         {
-            //handler.Shutdown(SocketShutdown.Receive);
-           // handler.Close();
+            CleanSocket(realId);
             socketHolder.Remove(realId);         
             threadHolder.Remove(realId);
         }
