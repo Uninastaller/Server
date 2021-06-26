@@ -20,8 +20,14 @@ namespace Server
         Hashtable threadHolder = new Hashtable();
 
         Thread thread;
-        Thread read;
-        
+        Thread identification;
+
+        private string data = null;
+        private byte[] buffer;
+        private int identificator;
+        private int amountOfBytes;
+
+
 
 
         public StartServer()
@@ -30,9 +36,12 @@ namespace Server
             Create();
             Bind();
             Listen();
+            /*
             thread = new Thread(new ThreadStart(WaitingForClient));
             threadHolder.Add(connectId, thread);
-            thread.Start();            
+            thread.Start();
+            */
+            WaitingForClient();
         }
 
         void Set()
@@ -58,21 +67,21 @@ namespace Server
         }
         void Accept()
         {
-            Console.WriteLine("Waiting for connection");
-            handler = socket.Accept();
-            Console.WriteLine("Conected");
+            Console.WriteLine("Waiting for connection THREAD[{0}]",Thread.CurrentThread.ManagedThreadId);
+            handler = socket.Accept();           
         }
-        void Receive()
-        {
-
-            long realId = connectId;
-
-            string data = null;
-            byte[] buffer;
+        void ReceiveJson(long realId)
+        {              
             buffer = new byte[1024];
-            int bytesRec = ((Socket)socketHolder[realId]).Receive(buffer);
-            data = Encoding.ASCII.GetString(buffer, 0, bytesRec);
+            Socket temporallySocket = ((Socket)socketHolder[realId]);
+
+            amountOfBytes = temporallySocket.Send(Encoding.ASCII.GetBytes("Send_Json", 0, 9));
+
+            amountOfBytes = temporallySocket.Receive(buffer);
+            data = Encoding.ASCII.GetString(buffer, 0, amountOfBytes);
             Computer computer = JsonSerializer.Deserialize<Computer>(data);
+            Console.WriteLine("Json received THREAD[{0}]", Thread.CurrentThread.ManagedThreadId);
+
             Console.WriteLine(computer.name);
             CloseTheThread(connectId);
         }
@@ -102,9 +111,9 @@ namespace Server
                         Interlocked.Increment(ref connectId);
                     }
                     socketHolder.Add(connectId, handler);
-                    read = new Thread(new ThreadStart(Receive));
-                    threadHolder.Add(connectId,read);
-                    read.Start();               
+                    identification = new Thread(new ThreadStart(ClientIdentify));
+                    threadHolder.Add(connectId, identification);
+                    identification.Start();             
                 }
             }
         }
@@ -114,6 +123,16 @@ namespace Server
             CleanSocket(realId);
             socketHolder.Remove(realId);         
             threadHolder.Remove(realId);
+        }
+        void ClientIdentify()
+        {
+            long realId = connectId;
+            buffer = new byte[30];
+            amountOfBytes = ((Socket)socketHolder[realId]).Receive(buffer);
+            identificator = BitConverter.ToInt32(buffer,0);
+
+            Console.WriteLine("Client {0}: Connected! THREAD[{1}]", identificator, Thread.CurrentThread.ManagedThreadId);
+            if (identificator == 1) ReceiveJson(realId);
         }
     }
 }
