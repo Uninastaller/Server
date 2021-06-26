@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 
 namespace Server
 {
@@ -12,6 +14,15 @@ namespace Server
         private IPHostEntry host;
         private IPAddress ipAddress;
         private IPEndPoint localEndPoint;
+        private long connectId;
+
+        Hashtable socketHolder = new Hashtable();
+        Hashtable threadHolder = new Hashtable();
+
+        Thread thread;
+        Thread read;
+        
+
 
         public StartServer()
         {
@@ -19,9 +30,10 @@ namespace Server
             Create();
             Bind();
             Listen();
-            Accept();
-            Receive();
-            Clean();
+            thread = new Thread(new ThreadStart(WaitingForClient));
+            threadHolder.Add(connectId, thread);
+            thread.Start();
+            //Clean();
             
         }
 
@@ -34,16 +46,12 @@ namespace Server
         void Create()
         {
             socket = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-            if (socket == null)
-            {
-                Console.WriteLine("Socket creation error");
-            }
             Console.WriteLine("Socket created");
         }
         void Bind()
         {
             socket.Bind(localEndPoint);
-           Console.WriteLine("Socket bound");
+            Console.WriteLine("Socket bound");
         }
         void Listen()
         {
@@ -58,12 +66,17 @@ namespace Server
         }
         void Receive()
         {
+
+            long realId = connectId;
+
             string data = null;
             byte[] buffer;
             buffer = new byte[1024];
-            int bytesRec = handler.Receive(buffer);
+            int bytesRec = ((Socket)socketHolder[realId]).Receive(buffer);
             data = Encoding.ASCII.GetString(buffer, 0, bytesRec);
             Computer computer = JsonSerializer.Deserialize<Computer>(data);
+            Console.WriteLine(computer.name);
+            CloseTheThread(connectId);
         }
         void Clean()
         {
@@ -71,6 +84,38 @@ namespace Server
             socket.Close();
             handler.Shutdown(SocketShutdown.Receive);
             handler.Close();
+        }
+        void WaitingForClient()
+        {
+            while (true)
+            {
+                Accept();
+
+                if (connectId < 1000)
+                    Interlocked.Increment(ref connectId);
+                else
+                    connectId = 1;
+                
+                if (socketHolder.Count < 10)
+                {
+                    while (socketHolder.Contains(connectId))
+                    {
+                        Interlocked.Increment(ref connectId);
+                    }
+                    socketHolder.Add(connectId, handler);
+                    read = new Thread(new ThreadStart(Receive));
+                    threadHolder.Add(connectId,read);
+                    read.Start();               
+                }
+            }
+        }
+
+        private void CloseTheThread(long realId)
+        {
+            //handler.Shutdown(SocketShutdown.Receive);
+           // handler.Close();
+            socketHolder.Remove(realId);         
+            threadHolder.Remove(realId);
         }
     }
 }
