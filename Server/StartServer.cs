@@ -12,29 +12,17 @@ namespace Server
 {
     class StartServer
     {
-        private static Socket ServerSocket, handler;
+        private static Socket ServerSocket;
         private static IPHostEntry host;
         private static IPAddress ipAddress;
         private static IPEndPoint localEndPoint;
-        private static long connectId;
-
-        private static Hashtable socketHolder = new Hashtable();
-        private static Hashtable threadHolder = new Hashtable();
 
         private static List<Socket> clientSockets = new List<Socket>();
 
-        private static Thread thread;
-        private static Thread identification;
-
-        private static string data = null;
-        private static byte[] buffer;
-        private static byte[] msg;
-        private static int identificator;
-        private static int amountOfBytes;
+        private const int BUFFER_SIZE = 2048;
+        private static byte[] buffer = new byte[BUFFER_SIZE];
 
         private static Computer computer;
-
-        private static Semaphore semaphore;
 
 
 
@@ -44,13 +32,11 @@ namespace Server
             Set();
             Create();
             Bind();
-            _Listen();
-            Console.ReadLine();
+            Listen();            
         }
 
         void Set()
         {
-
             host = Dns.GetHostEntry("127.0.0.1");
             ipAddress = host.AddressList[0];
             localEndPoint = new IPEndPoint(ipAddress, 7777);
@@ -65,77 +51,92 @@ namespace Server
             ServerSocket.Bind(localEndPoint);
             Console.WriteLine("Socket bound");
         }
-        void _Listen()
+        void Listen()
         {
             ServerSocket.Listen(10);
-            ServerSocket.BeginAccept(new AsyncCallback(_AcceptCallback), null);
+            ServerSocket.BeginAccept(new AsyncCallback(AcceptCallback), null);
             Console.WriteLine("Socket listening");
+            Console.ReadLine();
         }
-        private static void _AcceptCallback(IAsyncResult AR)
+        void AcceptCallback(IAsyncResult AR)
         {
             Socket socket = ServerSocket.EndAccept(AR);
+
             clientSockets.Add(socket);
-            buffer = new byte[1024];
-            socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, new AsyncCallback(_ReceiveCallback), socket);
-            ServerSocket.BeginAccept(new AsyncCallback(_AcceptCallback), null);
+            socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, new AsyncCallback(ReceiveCallback), socket);
+            Console.WriteLine("Client{0} connected",socket.Handle);
+            ServerSocket.BeginAccept(AcceptCallback, null);
 
         }
-        private static void _ReceiveCallback(IAsyncResult AR)
+        void ReceiveCallback(IAsyncResult AR)
         {
             Socket socket = (Socket)AR.AsyncState;
-            amountOfBytes = socket.EndReceive(AR);
-            msg = new byte[amountOfBytes];
+            int amountOfBytes;
+
+            try
+            {
+                amountOfBytes = socket.EndReceive(AR);
+            }
+            catch (SocketException)
+            {
+                Console.WriteLine("Client forcefully disconnected");
+                socket.Close();
+                clientSockets.Remove(socket);
+                return;
+            }
+
+            byte[] msg = new byte[amountOfBytes];
             Array.Copy(buffer,msg,amountOfBytes);
-            data = Encoding.ASCII.GetString(msg);
+            string data = Encoding.ASCII.GetString(msg);
             Console.WriteLine("[Client] " + data);
             if (JsonValidation(data))
             {
-                Console.WriteLine("[SERVER] Valid json of Computer object was sent.");
+                Send("Valid json of the Computer object was sent.", socket);
             }
-            if (data.ToLower() == "request json")
+            else if (data.ToLower() == "request json")
             {
-                SendJson(socket);
-                Console.WriteLine("[SERVER] Sending Json.");
+                SendJson(socket);               
+            }
+            else if (data.ToLower() == "exit")
+            {
+                socket.Shutdown(SocketShutdown.Both);
+                socket.Close();
+                clientSockets.Remove(socket);
+                Console.WriteLine("Client disconnected");
+                return;
             }
             else Send("Invalid request", socket);
 
         }
-        void CleanSocket(long realId)
-        {
-            
-            Socket sct = (Socket)socketHolder[realId];
-            sct.Shutdown(SocketShutdown.Both);
-            sct.Close();
 
-        }
-
-        static void SendJson(Socket socket)
+        void SendJson(Socket socket)
         {
             if (computer != null)
             {
                 string stringjson = JsonSerializer.Serialize(computer);
+                Console.WriteLine("[SERVER] Sending Json.");
                 Send(stringjson, socket);
             }
-            else Console.WriteLine("I dont have any Json yet.");
+            else{
+                Send("I dont have any Json yet.", socket);
+                Console.WriteLine("I dont have any Json yet."); 
+                }
         }
-        static void Send(String data, Socket socket)
-        {
-            msg = Encoding.ASCII.GetBytes(data);
-            socket.BeginSend(msg, 0, msg.Length, SocketFlags.None, new AsyncCallback(SendCallBack), socket);
-            socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, new AsyncCallback(_ReceiveCallback), socket);
+        void Send(String data, Socket socket)
+        {   
+            byte[] msg = Encoding.ASCII.GetBytes(data);
+            socket.Send(msg);
+            socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, new AsyncCallback(ReceiveCallback), socket);
         }
-        static void SendCallBack(IAsyncResult AR)
-        {
-            Socket socket = (Socket)AR.AsyncState;
-            socket.EndSend(AR);
-        }
-        static bool JsonValidation(String data) 
+
+        bool JsonValidation(String data) 
         {
             try
             {
                 computer = JsonSerializer.Deserialize<Computer>(data);
+                Console.WriteLine("[SERVER] Valid json of Computer object was sent.");
             }
-            catch(System.Text.Json.JsonException)
+            catch(JsonException)
             {
                 return false;
             }
