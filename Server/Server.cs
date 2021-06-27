@@ -29,17 +29,16 @@ namespace Server
 
         public Server(int port, char c)
         {
-            start(port, c);
+            Start(port);
+            LoopCheckingForStopChar(c);
         }
 
-        void start(int port, char c)
+        void Start(int port)
         {
             Set(port);
             Create();
             Bind();
             Listen();
-            LoopCheckingForStopChar(c);
-            CloseAllSockets();
         }
 
         void Set(int port)
@@ -193,7 +192,11 @@ namespace Server
             while (true)
             {
                 string x = Console.ReadLine();
-                if ((x != "")&&(c == x[0])) break;
+                if ((x != "")&&(c == x[0]))
+                {
+                    CloseAllSockets();
+                    break;
+                }
 
             }
         }
