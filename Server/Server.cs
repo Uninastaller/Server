@@ -80,8 +80,8 @@ namespace Server
         void Listen()
         {
             serverSocket.Listen(10);
-            serverSocket.BeginAccept(new AsyncCallback(AcceptCallback), null);
             Console.WriteLine("Socket listening");
+            serverSocket.BeginAccept(new AsyncCallback(AcceptCallback), null);
         }
         void AcceptCallback(IAsyncResult AR)
         {
