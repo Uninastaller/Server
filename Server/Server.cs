@@ -27,17 +27,18 @@ namespace Server
 
 
 
-        public Server(int port)
+        public Server(int port, char c)
         {
-            start(port);
+            start(port, c);
         }
 
-        void start(int port)
+        void start(int port, char c)
         {
             Set(port);
             Create();
             Bind();
             Listen();
+            LoopCheckingForStopChar(c);
             CloseAllSockets();
         }
 
@@ -62,7 +63,6 @@ namespace Server
             serverSocket.Listen(10);
             serverSocket.BeginAccept(new AsyncCallback(AcceptCallback), null);
             Console.WriteLine("Socket listening");
-            Console.ReadLine();
         }
         void AcceptCallback(IAsyncResult AR)
         {
@@ -104,7 +104,6 @@ namespace Server
 
             byte[] msg = new byte[amountOfBytes];
             Array.Copy((byte[])bufferAndSocketHolder[socket], msg, amountOfBytes);
-            //Array.Clear(buffer, 0, BUFFER_SIZE);
 
             string data = Encoding.ASCII.GetString(msg);
             Console.WriteLine("[Client " + ((Socket)AR.AsyncState).Handle + "] " + data);
@@ -188,6 +187,15 @@ namespace Server
         {
             socket.Close();              
             bufferAndSocketHolder.Remove(socket);
+        }
+        void LoopCheckingForStopChar(char c)
+        {
+            while (true)
+            {
+                string x = Console.ReadLine();
+                if (c == x[0]) break;
+
+            }
         }
     }
 }
