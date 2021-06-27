@@ -1,9 +1,13 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+
 
 namespace Server
 {
@@ -14,11 +18,11 @@ namespace Server
         private IPAddress ipAddress;
         private IPEndPoint localEndPoint;
 
-        private List<Socket> clientSockets = new List<Socket>();
+        private Hashtable bufferAndSocketHolder = new Hashtable();
 
         private const int BUFFER_SIZE = 2048;
         private byte[] buffer = new byte[BUFFER_SIZE];
-
+        
         private Computer computer;
 
 
@@ -73,14 +77,18 @@ namespace Server
                 return;
             }
 
-            clientSockets.Add(socket);
-            socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, new AsyncCallback(ReceiveCallback), socket);
+            bufferAndSocketHolder.Add(socket, new byte[BUFFER_SIZE]);
+  
+            socket.BeginReceive((byte[])bufferAndSocketHolder[socket], 0, BUFFER_SIZE, SocketFlags.None, new AsyncCallback(ReceiveCallback), socket);
             Console.WriteLine("Client {0} - connected", socket.Handle);
             serverSocket.BeginAccept(AcceptCallback, null);
 
         }
+
+
         void ReceiveCallback(IAsyncResult AR)
         {
+            Console.Write("[THREAD {0}] ",Thread.CurrentThread.ManagedThreadId);
             Socket socket = (Socket)AR.AsyncState;
             int amountOfBytes;
 
@@ -91,17 +99,22 @@ namespace Server
             catch (SocketException)
             {
                 Console.WriteLine("Client {0} - forcefully disconnected", ((Socket)AR.AsyncState).Handle);
-                socket.Close();
-                clientSockets.Remove(socket);
+                Clean(socket);
                 return;
-            }
+            }         
 
             byte[] msg = new byte[amountOfBytes];
-            Array.Copy(buffer, msg, amountOfBytes);
-            Array.Clear(buffer, 0, BUFFER_SIZE);
+            Array.Copy((byte[])bufferAndSocketHolder[socket], msg, amountOfBytes);
+            //Array.Clear(buffer, 0, BUFFER_SIZE);
 
             string data = Encoding.ASCII.GetString(msg);
             Console.WriteLine("[Client " + ((Socket)AR.AsyncState).Handle + "] " + data);
+            EvaluateOfReceivedData(data,socket);
+
+        }
+
+        void EvaluateOfReceivedData(String data, Socket socket)
+        {
             if (JsonValidation(data))
             {
                 Send("Valid json of the Computer object was sent.", socket);
@@ -113,14 +126,15 @@ namespace Server
             else if (data.ToLower() == "exit")
             {
                 socket.Shutdown(SocketShutdown.Both);
-                socket.Close();
-                clientSockets.Remove(socket);
-                Console.WriteLine("Client {0} - disconnected", ((Socket)AR.AsyncState).Handle);
+                Clean(socket);
+
+                Console.WriteLine("Client - disconnected");
                 return;
             }
             else Send("Invalid request", socket);
-
         }
+
+
 
         void SendJson(Socket socket)
         {
@@ -136,11 +150,14 @@ namespace Server
                 Console.WriteLine("I dont have any Json yet.");
             }
         }
+
+
         void Send(String data, Socket socket)
         {
             byte[] msg = Encoding.ASCII.GetBytes(data);
             socket.Send(msg);
-            socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, new AsyncCallback(ReceiveCallback), socket);
+            socket.BeginReceive((byte[])bufferAndSocketHolder[socket], 0, BUFFER_SIZE, SocketFlags.None, new AsyncCallback(ReceiveCallback), socket);
+
         }
 
         bool JsonValidation(String data)
@@ -156,15 +173,22 @@ namespace Server
             }
             return true;
         }
+
+
         void CloseAllSockets()
         {
-            foreach (Socket socket in clientSockets)
+            foreach (Socket socket in bufferAndSocketHolder.Keys)
             {
                 socket.Shutdown(SocketShutdown.Both);
                 socket.Close();
             }
+        }
 
-            serverSocket.Close();
+
+        void Clean(Socket socket)
+        {
+            socket.Close();              
+            bufferAndSocketHolder.Remove(socket);
         }
     }
 }
