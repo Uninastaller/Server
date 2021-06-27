@@ -24,11 +24,9 @@ namespace Server
         
         private Computer computer;
 
-
-
-
-        public Server(int port, char c)
+        public Server(string ipAddress, int port, char c)
         {
+            GetIPAddress(ipAddress);
             Start(port);
             LoopCheckingForStopChar(c);
         }
@@ -40,11 +38,23 @@ namespace Server
             Bind();
             Listen();
         }
+        void GetIPAddress(String ipAddress)
+        {
+            try
+            {
+                host = Dns.GetHostEntry(ipAddress);
+                this.ipAddress = host.AddressList[0];
+            }
+            catch (SocketException)
+            {
+                Console.WriteLine("Invalid IP address");
+                Environment.Exit(0);
+
+            }
+        }
 
         void Set(int port)
         {
-            host = Dns.GetHostEntry("127.0.0.1");
-            ipAddress = host.AddressList[0];
             localEndPoint = new IPEndPoint(ipAddress, port);
         }
         void Create()
