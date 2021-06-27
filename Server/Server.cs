@@ -47,9 +47,7 @@ namespace Server
             }
             catch (SocketException)
             {
-                Console.WriteLine("Invalid IP address");
-                Environment.Exit(0);
-
+                ErrorWithStarting("Invalid IP address",false);
             }
         }
 
@@ -59,12 +57,24 @@ namespace Server
         }
         void Create()
         {
-            serverSocket = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            try
+            {
+                serverSocket = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            }catch (SocketException)
+            {
+                ErrorWithStarting("Failed to create socket",false);     
+            }
             Console.WriteLine("Socket created");
         }
         void Bind()
         {
-            serverSocket.Bind(localEndPoint);
+            try
+            {
+                serverSocket.Bind(localEndPoint);
+            }catch (SocketException)
+            {
+                ErrorWithStarting("Error with binding", true);
+            }
             Console.WriteLine("Socket bound");
         }
         void Listen()
@@ -209,6 +219,12 @@ namespace Server
                 }
 
             }
+        }
+        void ErrorWithStarting(String message, bool socketClose)
+        {
+            if(socketClose)serverSocket.Close();
+            Console.WriteLine(message);
+            Environment.Exit(0);
         }
     }
 }
