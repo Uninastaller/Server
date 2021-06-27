@@ -193,7 +193,7 @@ namespace Server
             while (true)
             {
                 string x = Console.ReadLine();
-                if (c == x[0]) break;
+                if ((x != "")&&(c == x[0])) break;
 
             }
         }
