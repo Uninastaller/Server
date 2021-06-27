@@ -21,7 +21,6 @@ namespace Server
         private Hashtable bufferAndSocketHolder = new Hashtable();
 
         private const int BUFFER_SIZE = 2048;
-        private byte[] buffer = new byte[BUFFER_SIZE];
         
         private Computer computer;
 
